@@ -17,14 +17,14 @@
 from collections import defaultdict
 
 import logging
-import cPickle as pickle
+import pickle as pickle
 import time
 import numpy as np
 import inspect
 import uuid
 import types
 import traceback
-import misc
+from . import misc
 
 # The pickle protocol used; 0 for ASCII, 2 for binary; quite a bit smaller.
 PICKLE_PROTO = pickle.HIGHEST_PROTOCOL
@@ -112,7 +112,7 @@ class AsyncReply(object):
                 logger.debug('Performing callback for call id %d' % self._callid)
             try:
                 self.callback(val)
-            except Exception, e:
+            except Exception as e:
                 logging.warning('Callback for call %s failed: %s', self._callid, str(e))
 
     def get(self, block=False, delay=DEFAULT_TIMEOUT, do_raise=True):
@@ -132,11 +132,11 @@ class AsyncReply(object):
 
 def _walk_objects(obj, func, *args):
     t = type(obj)
-    if t in (types.ListType, types.TupleType):
+    if t in (list, tuple):
         obj = list(obj)
         for i, v in enumerate(obj):
             obj[i] = _walk_objects(v, func, *args)
-    if t is types.DictType:
+    if t is dict:
         for k in sorted(obj):
             obj[k] = _walk_objects(obj[k], func, *args)
     return func(obj, *args)
@@ -182,7 +182,7 @@ def _unwrap_ars_sobjs(obj, bufs, client=None):
     '''
 
     def replace(o):
-        if type(o) is types.DictType:
+        if type(o) is dict:
             if 'OS_AR' in o:
                 if len(bufs) == 0:
                     raise ValueError('No buffer!')
@@ -232,7 +232,7 @@ def _unwrap_sobjs(obj, bufs, client=None):
     '''
 
     def replace(o):
-        if type(o) is types.DictType and 'OS_UID' in o:
+        if type(o) is dict and 'OS_UID' in o:
             if 'OS_SRV_ID' in o and 'OS_SRV_ADDR' in o:
                 return helper.get_object_from(o['OS_UID'], o['OS_SRV_ID'], o['OS_SRV_ADDR'])
             else:
@@ -290,7 +290,7 @@ class ObjectSharer(object):
     def call(self, client, objuid, func_name, *args, **kwargs):
         is_signal = kwargs.get(OS_SIGNAL, False)
         callback = kwargs.pop('callback', None)
-        async = kwargs.pop('async', False) or (callback is not None) or is_signal
+        async_arg = kwargs.pop('async_arg', False) or (callback is not None) or is_signal
         timeout = kwargs.pop('timeout', DEFAULT_TIMEOUT)
 
         self._last_call_id += 1
@@ -298,7 +298,7 @@ class ObjectSharer(object):
         async_reply = AsyncReply(callid, callback=callback)
         self.reply_objects[callid] = async_reply
         if DEBUG:
-            logger.debug('Sending call %d to %s: %s.%s(%s,%s), async=%s', callid, client, objuid, func_name, misc.ellipsize(str(args)), misc.ellipsize(str(kwargs)), async)
+            logger.debug('Sending call %d to %s: %s.%s(%s,%s), async_arg=%s', callid, client, objuid, func_name, misc.ellipsize(str(args)), misc.ellipsize(str(kwargs)), async_arg)
 
         args, arlist = _wrap(args)
         kwargs, arlist = _wrap(kwargs, arlist)
@@ -317,7 +317,7 @@ class ObjectSharer(object):
         arlist.insert(0, msg)
         self.backend.send_msg(client, arlist)
 
-        if async:
+        if async_arg:
             return async_reply
 
         ret = self.backend.main_loop(timeout=timeout, wait_for=async_reply)
@@ -337,7 +337,7 @@ class ObjectSharer(object):
         and the aliases.
         '''
         ret = list(self.objects.keys())
-        ret.extend(self.name_map.keys())
+        ret.extend(list(self.name_map.keys()))
         return ret
 
     def get_object(self, objid):
@@ -468,13 +468,13 @@ class ObjectSharer(object):
                 return self._proxy_cache[objname]
 
             # See if we already know which client has this object
-            for client_id, names in self._client_object_list_cache.items():
+            for client_id, names in list(self._client_object_list_cache.items()):
                 if objname in names:
                     return self.get_object_from(objname, client_id)
 
         # Query all clients
         # TODO: asynchronously
-        for client_id in self.clients.keys():
+        for client_id in list(self.clients.keys()):
             obj = self.get_object_from(objname, client_id, no_cache=no_cache)
             if obj is not None:
                 return obj
@@ -523,7 +523,7 @@ class ObjectSharer(object):
             del self.objects[obj._OS_UID]
             root.emit('object-removed', obj._OS_UID)
 
-        for name, id in self.name_map.items():
+        for name, id in list(self.name_map.items()):
             if obj._OS_UID == id:
                 del self.name_map[name]
 
@@ -558,7 +558,7 @@ class ObjectSharer(object):
         if hid in self._callbacks_hid:
             del self._callbacks_hid[hid]
 
-        for name, info_list in self._callbacks_name.items():
+        for name, info_list in list(self._callbacks_name.items()):
             for index, info in enumerate(info_list):
                 if info['hid'] == hid:
                     del self._callbacks_name[name][index]
@@ -571,7 +571,7 @@ class ObjectSharer(object):
                 signame, args, kwargs, uid, len(self.clients))
 
         kwargs[OS_SIGNAL] = True
-        for client in self.clients.values():
+        for client in list(self.clients.values()):
 #            print 'Calling receive sig, uid=%s, signame %s, args %s, kwargs %s' % (uid, signame, args, kwargs)
             client.receive_signal(uid, signame, *args, **kwargs)
         self.receive_signal(uid, signame, *args, **kwargs)
@@ -595,7 +595,7 @@ class ObjectSharer(object):
                     fkwargs = kwargs.copy()
                     fkwargs.update(info['kwargs'])
                     info['callback'](*fargs, **fkwargs)
-                except Exception, e:
+                except Exception as e:
                     logger.warning('Callback to %s failed for %s.%s: %s\n%s',
                             info.get('callback', None), uid, signame, str(e), traceback.format_exc())
 
@@ -621,11 +621,11 @@ class ObjectSharer(object):
         self.clients[uid].list_objects(callback=lambda reply, uid=uid:
             self._update_client_object_list(uid, reply))
 
-    def request_client_proxy(self, uid, async=False):
+    def request_client_proxy(self, uid, async_arg=False):
         '''
         Request the root object from a client to construct the proxy.
         '''
-        if not async:
+        if not async_arg:
             info = self.call(uid, uid, 'get_object_info', 'root')
             self._add_client_to_list(uid, info)
         else:
@@ -659,7 +659,7 @@ class ObjectSharer(object):
             info = pickle.loads(msg.parts[0])
             if DEBUG:
                 logger.debug('Msg %s from %s: %s', info[0], msg.sender_uid, info)
-        except Exception, e:
+        except Exception as e:
             logger.warning('Unable to decode object: %s [%r]', str(e), msg.parts[0])
             return
 
@@ -705,7 +705,7 @@ class ObjectSharer(object):
                     logger.debug('  Returning for call %s: %s', callid, misc.ellipsize(str(ret)))
 
             # Handle errors
-            except Exception, e:
+            except Exception as e:
 #            if 0:
                 if len(info) < 6:
                     logger.error('Invalid call msg: %s', info)
@@ -757,7 +757,7 @@ class ObjectSharer(object):
                 logger.debug('Sending hello_reply')
             reply = ('hello_reply', self.root_uid.b, self.backend.get_server_address())
             self.backend.send_msg(msg.sender_uid, [pickle.dumps(reply, PICKLE_PROTO)])
-            self.request_client_proxy(msg.sender_uid, async=True)
+            self.request_client_proxy(msg.sender_uid, async_arg=True)
 
         elif info[0] == 'hello_reply':
             msg.sender_uid = misc.UID(bytes=info[1])
@@ -765,7 +765,7 @@ class ObjectSharer(object):
             if DEBUG:
                 logger.debug('hello_reply client %s with server @ %s', msg.sender_uid, from_addr)
             self.backend.connect_from(msg.sock, msg.sender_uid, from_addr)
-            self.request_client_proxy(msg.sender_uid, async=True)
+            self.request_client_proxy(msg.sender_uid, async_arg=True)
 
         elif info[0] == 'goodbye_from':
             if DEBUG:
@@ -1008,7 +1008,7 @@ def set_backend(be):
     global backend
 
     if be == 'socket':
-        import socketbackend
+        from . import socketbackend
         backend = socketbackend.SocketBackend(helper)
     else:
         raise Exception('Unknown backend %s' % backend)

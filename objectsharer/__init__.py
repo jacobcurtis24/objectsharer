@@ -1,2 +1,2 @@
-from objectsharer import *
+from .objectsharer import *
 

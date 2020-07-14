@@ -1,6 +1,6 @@
 import socket
 import select
-import backend
+from . import backend
 import struct
 
 BUFSIZE = 65536
@@ -22,7 +22,7 @@ class SocketBackend(backend.Backend):
         '''
         Connect to a remote ObjectSharer at <addr>.
         If <uid> is specified it is associated with the client at <addr>.
-        If <async> is False (default), wait for a reply.
+        If <async_arg> is False (default), wait for a reply.
         '''
 
         logger.debug('Connecting to %s', addr)
@@ -40,10 +40,10 @@ class SocketBackend(backend.Backend):
 
         try:
             rsocks, wlist, xlist = select.select(self._select_socks, [], [], timeout/1000.0)
-        except Exception, e:
+        except Exception as e:
             logger.warning('select failed: %s, timeout %s, checking sockets', str(e), timeout)
             for s in self._select_socks:
-                print 'Sock: %s (%d)' % (s, s.fileno())
+                print('Sock: %s (%d)' % (s, s.fileno()))
             return []
 
         # Handle incoming connections
@@ -69,7 +69,7 @@ class SocketBackend(backend.Backend):
     def _sock_send(self, sock, data):
         try:
             ret = sock.send(data)
-        except socket.error, e:
+        except socket.error as e:
             if e.errno not in (10035, ):
                 logger.warning('Send exception (%s), assuming client disconnected', e)
                 self.client_disconnected(sock)
@@ -102,7 +102,7 @@ class SocketBackend(backend.Backend):
                 return
             socklist = [sock]
         else:
-            socklist = self._send_queue.keys()
+            socklist = list(self._send_queue.keys())
 
         for sock in socklist:
             datalist = self._send_queue[sock]
@@ -195,7 +195,7 @@ class SocketBackend(backend.Backend):
     def recv_from(self, sock):
         try:
             data = sock.recv(BUFSIZE)
-        except Exception, e:
+        except Exception as e:
             logger.warning('Recv exception (%s), assuming client disconnected', e)
             self.client_disconnected(sock)
             return None

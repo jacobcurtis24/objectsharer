@@ -5,7 +5,7 @@ import time
 import types
 import pickle
 import traceback
-import misc
+from . import misc
 import struct
 import bisect
 
@@ -38,12 +38,12 @@ def get_logger(desc):
     Will also be used by backend.py
     '''
     global logger
-    import objectsharer as objsh
+    from . import objectsharer as objsh
     logger = objsh.logger
     return logger
 
 def parse_addr(addrstr):
-    if type(addrstr) in (types.ListType, types.TupleType):
+    if type(addrstr) in (list, tuple):
         return addrstr
     if addrstr.startswith('tcp://'):
         addrstr = addrstr[6:]
@@ -117,7 +117,7 @@ class Backend(object):
         '''
         Return the address for the objectsharer identified by <uid>.
         '''
-        for k, v in self.addr_to_uid_map.items():
+        for k, v in list(self.addr_to_uid_map.items()):
             if v == uid:
                 return k
         return None
@@ -150,7 +150,7 @@ class Backend(object):
         Check whether we should proceed to connect to addr.
         Returns True if so, False if we shouldn't (i.e. already are connected).
         '''
-        if addr in self.uid_to_addr_map.values():
+        if addr in list(self.uid_to_addr_map.values()):
             logger.warning('Already connected to %s' % addr)
             return False
         if uid is not None and uid in self.uid_to_sock_map:
@@ -158,7 +158,7 @@ class Backend(object):
             return False
         return True
 
-    def connect_to(self, addr, timeout=20, async=False, uid=None, sock=None):
+    def connect_to(self, addr, timeout=20, async_arg=False, uid=None, sock=None):
         '''
         Connect to a remote address <addr>, or, if sock != None, initiate
         messaging to a already connected client.
@@ -175,7 +175,7 @@ class Backend(object):
         logging.debug('Sending hello_from message to %s', addr)
         msg = ('hello_from', self.get_uid().b, self.get_server_address())
         self.send_msg('dest', [pickle.dumps(msg)], sock=sock)
-        if async:
+        if async_arg:
             logging.debug('Waiting for reply asynchronously')
             return
 
@@ -210,7 +210,7 @@ class Backend(object):
         dlen = 7
         for buf in bufs:
             dlen += len(buf) + 4
-        if dlen > 0xffffffffL:
+        if dlen > 0xffffffff:
             logging.error('Trying to send too long packet: %d', dlen)
             return -1
 
@@ -319,7 +319,7 @@ class Backend(object):
                 t_new = now2 + info['delay'] - delta
                 logger.debug('Rescheduling timeout %d for %s', t_id, t_new - now2)
                 bisect.insort(self._scheduled_timeouts, (t_new, t_id))
-            except Exception, e:
+            except Exception as e:
                 logger.error('Timeout call %d failed: %s', t_id, str(e))
                 self.timeout_remove(t_id)
 
@@ -345,7 +345,7 @@ class Backend(object):
 
         # Convert wait_for to a list
         if wait_for is not None:
-            if type(wait_for) in (types.TupleType, types.ListType):
+            if type(wait_for) in (tuple, list):
                 wait_for = list(wait_for)
             else:
                 wait_for = [wait_for,]
@@ -396,7 +396,7 @@ class Backend(object):
 
                     self.helper.process_message(msg, waiting=waiting)
 
-                except Exception, e:
+                except Exception as e:
                     logger.warning('Failed to process message: %s\n%s', str(e), traceback.format_exc())
 
             # If we are waiting for call results and have them, return
