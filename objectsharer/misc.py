@@ -22,7 +22,7 @@ class UID(object):
         self.b = bytes
 
     def __str__(self):
-        s = ''.join(['%02x'%ord(b) for b in self.b])
+        s = ''.join(['%02x'%b for b in self.b])
         return '-'.join((s[:8], s[8:12], s[12:16], s[16:20], s[20:]))
 
     def __eq__(self, other):

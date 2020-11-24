@@ -167,7 +167,7 @@ class SocketBackend(backend.Backend):
         blen = len(b)
         while (ofs + 7) < blen:
             # Check packet magic
-            if b[ofs:ofs+2] != 'OS':
+            if b[ofs:ofs+2] != b'OS':
                 logger.warning('Packet magic missing, dropping data')
                 return ret, -1
 

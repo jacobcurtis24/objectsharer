@@ -215,7 +215,7 @@ class Backend(object):
             return -1
 
         b = bytearray(dlen)
-        b[:7] = 'OS' + struct.pack('<IB', dlen, len(bufs))
+        b[:7] = b'OS' + struct.pack('<IB', dlen, len(bufs))
         ofs = 7
         for buf in bufs:
             blen = len(buf)
